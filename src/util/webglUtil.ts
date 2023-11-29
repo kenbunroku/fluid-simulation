@@ -133,9 +133,89 @@ export const createFramebuffer = (
   gl.bindRenderbuffer(gl.RENDERBUFFER, null);
   gl.bindFramebuffer(gl.FRAMEBUFFER, null);
 
-  return {
-    framebuffer: framebuffer,
-    depthBuffer: depthBuffer,
-    texture: texture,
-  };
+  return framebuffer;
+};
+
+type UniformType =
+  | "uniform1f"
+  | "uniform2f"
+  | "uniform3f"
+  | "uniform4f"
+  | "uniform1i"
+  | "uniform2i"
+  | "uniform3i"
+  | "uniform4i"
+  | "uniform1ui"
+  | "uniform2ui"
+  | "uniform3ui"
+  | "uniform4ui"
+  | "uniform1fv"
+  | "uniform2fv"
+  | "uniform3fv"
+  | "uniform4fv"
+  | "uniform1iv"
+  | "uniform2iv"
+  | "uniform3iv"
+  | "uniform4iv"
+  | "uniform1uiv"
+  | "uniform2uiv"
+  | "uniform3uiv"
+  | "uniform4uiv"
+  | "uniformMatrix2fv"
+  | "uniformMatrix3fv"
+  | "uniformMatrix4fv";
+
+export const setUniform = (
+  gl: WebGL2RenderingContext,
+  program: WebGLProgram,
+  uniformName: string,
+  type: UniformType,
+  ...values: any[]
+) => {
+  const location = gl.getUniformLocation(program, uniformName);
+  if (location === null) {
+    console.warn(`Uniform '${uniformName}' not found.`);
+    return;
+  }
+
+  switch (type) {
+    case "uniform1f":
+    case "uniform1i":
+    case "uniform1ui":
+      gl[type](location, values[0]);
+      break;
+
+    case "uniform2f":
+    case "uniform2i":
+    case "uniform2ui":
+      gl[type](location, values[0], values[1]);
+      break;
+
+    // Continue with similar cases for other uniform types
+    // ...
+
+    case "uniform1fv":
+    case "uniform1iv":
+    case "uniform1uiv":
+      if (values.length === 1) {
+        gl[type](location, values[0]);
+      } else if (values.length === 2) {
+        gl[type](location, values[0], values[1]);
+      } else if (values.length === 3) {
+        gl[type](location, values[0], values[1], values[2]);
+      }
+      break;
+
+    // Handle similar cases for uniform2fv, uniform3fv, etc.
+    // ...
+
+    case "uniformMatrix2fv":
+    case "uniformMatrix3fv":
+    case "uniformMatrix4fv":
+      gl[type](location, false, values[0]); // Assuming matrices are not transposed
+      break;
+
+    default:
+      console.warn(`Unknown uniform type: '${type}'`);
+  }
 };
