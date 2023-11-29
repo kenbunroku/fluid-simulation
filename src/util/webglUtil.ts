@@ -191,9 +191,6 @@ export const setUniform = (
       gl[type](location, values[0], values[1]);
       break;
 
-    // Continue with similar cases for other uniform types
-    // ...
-
     case "uniform1fv":
     case "uniform1iv":
     case "uniform1uiv":
@@ -205,9 +202,6 @@ export const setUniform = (
         gl[type](location, values[0], values[1], values[2]);
       }
       break;
-
-    // Handle similar cases for uniform2fv, uniform3fv, etc.
-    // ...
 
     case "uniformMatrix2fv":
     case "uniformMatrix3fv":
