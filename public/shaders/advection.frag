@@ -9,20 +9,20 @@ uniform bool isBFECC;
 uniform vec2 fboSize;
 uniform vec2 px;
 
-in vec2 uv;
+in vec2 vUv;
 out vec4 fragColor;
 
 void main() {
     vec2 ratio = max(fboSize.x, fboSize.y) / fboSize;
 
     if(isBFECC == false) {
-        vec2 vel = texture(velocity, uv).xy;
-        vec2 uv2 = uv - vel * dt * ratio;
+        vec2 vel = texture(velocity, vUv).xy;
+        vec2 uv2 = vUv - vel * dt * ratio;
         vec2 newVel = texture(velocity, uv2).xy;
         fragColor = vec4(newVel, 0.0f, 0.0f);
     } else {
-        vec2 spot_new = uv;
-        vec2 vel_old = texture(velocity, uv).xy;
+        vec2 spot_new = vUv;
+        vec2 vel_old = texture(velocity, vUv).xy;
         // back trace
         vec2 spot_old = spot_new - vel_old * dt * ratio;
         vec2 vel_new1 = texture(velocity, spot_old).xy;
