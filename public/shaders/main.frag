@@ -3,11 +3,12 @@
 precision highp float;
 uniform sampler2D velocity;
 
-in vec2 uv;
+in vec2 vUv;
+
 out vec4 fragColor;
 
 void main() {
-    vec2 vel = texture(velocity, uv).xy;
+    vec2 vel = texture(velocity, vUv).xy;
     float len = length(vel);
     vel = vel * 0.5f + 0.5f;
 
