@@ -30,11 +30,6 @@ const onMouseMove = (event: MouseEvent) => {
   previousMouseX = mouseX;
   previousMouseY = mouseY;
 
-  const center = vec2(mouseX, mouseY);
-  const force = vec2(forceX, forceY);
-
-  console.log("center: ", center, "force: ", force);
-
   mouseState.center = vec2(mouseX, mouseY);
   mouseState.force = vec2(forceX, forceY);
 };
