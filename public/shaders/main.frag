@@ -1,15 +1,19 @@
+#version 300 es
+
 precision highp float;
 uniform sampler2D velocity;
-varying vec2 uv;
+
+in vec2 uv;
+out vec4 fragColor;
 
 void main() {
-    vec2 vel = texture2D(velocity, uv).xy;
+    vec2 vel = texture(velocity, uv).xy;
     float len = length(vel);
-    vel = vel * 0.5 + 0.5;
+    vel = vel * 0.5f + 0.5f;
 
-    // vec3 color = vec3(vel.x, vel.y, 1.0);
-    vec3 color = vec3(0.0);
-    // color = mix(vec3(1.0), color, len);
+    vec3 color = vec3(vel.x, vel.y, 1.0f);
 
-    gl_FragColor = vec4(color, 1.0);
+    color = mix(vec3(1.0f), color, len);
+
+    fragColor = vec4(color, 1.0f);
 }

@@ -1,14 +1,18 @@
+#version 300 es
+
 precision highp float;
 
 uniform vec2 force;
 uniform vec2 center;
 uniform vec2 scale;
 uniform vec2 px;
-varying vec2 vUv;
+
+in vec2 vUv;
+out vec4 fragColor;
 
 void main() {
-    vec2 circle = (vUv - 0.5) * 2.0;
-    float d = 1.0 - min(length(circle), 1.0);
+    vec2 circle = (vUv - 0.5f) * 2.0f;
+    float d = 1.0f - min(length(circle), 1.0f);
     d *= d;
-    gl_FragColor = vec4(force * d, 0, 1);
+    fragColor = vec4(force * d, 0, 1);
 }
