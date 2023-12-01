@@ -100,6 +100,7 @@ const init = () => {
   mouseProps.cellScale = cellScale;
 
   ext = gl.getExtension("EXT_float_blend");
+  gl.getExtension("EXT_color_buffer_float");
   if (!ext) {
     throw new Error("Unable to get the extension.");
   }
