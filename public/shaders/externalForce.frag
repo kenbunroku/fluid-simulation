@@ -14,5 +14,5 @@ void main() {
     vec2 circle = (vUv - 0.5f) * 2.0f;
     float d = 1.0f - min(length(circle), 1.0f);
     d *= d;
-    fragColor = vec4(force * d, 0, 1);
+    fragColor = vec4(force * d, 0.0f, 1.0f);
 }
