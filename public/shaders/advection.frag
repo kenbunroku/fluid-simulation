@@ -4,7 +4,7 @@ precision highp float;
 
 uniform sampler2D velocity;
 uniform float dt;
-uniform bool isBFECC;
+uniform int isBFECC;
 // uniform float uvScale;
 uniform vec2 fboSize;
 uniform vec2 px;
@@ -15,7 +15,7 @@ out vec4 fragColor;
 void main() {
     vec2 ratio = max(fboSize.x, fboSize.y) / fboSize;
 
-    if(isBFECC == false) {
+    if(isBFECC == 0) {
         vec2 vel = texture(velocity, vUv).xy;
         vec2 uv2 = vUv - vel * dt * ratio;
         vec2 newVel = texture(velocity, uv2).xy;
