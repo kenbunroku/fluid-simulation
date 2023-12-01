@@ -73,6 +73,8 @@ const mouseProps = {
 
 let quadVao: WebGLVertexArrayObject | null = null;
 
+let ext: any = null;
+
 const init = () => {
   // Find the canvas element
   canvas = document.querySelector("#canvas");
@@ -89,9 +91,18 @@ const init = () => {
   canvas.width = width;
   canvas.height = height;
 
+  if (!gl) {
+    throw new Error("No WebGL2 context.");
+  }
+
   fboSize = vec2(width, height);
   cellScale = vec2(1 / width, 1 / height);
   mouseProps.cellScale = cellScale;
+
+  ext = gl.getExtension("EXT_float_blend");
+  if (!ext) {
+    throw new Error("Unable to get the extension.");
+  }
 
   // Set up tweakpane
   const pane = new Pane();
