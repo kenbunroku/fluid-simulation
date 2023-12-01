@@ -343,7 +343,7 @@ const draw = () => {
   // Add external forces from mouse movement
   // Write to vel_1 for the first iteration
   gl.enable(gl.BLEND);
-  gl.blendFunc(gl.ONE, gl.ONE);
+  gl.blendFunc(gl.ONE, gl.ONE_MINUS_CONSTANT_ALPHA);
   gl.useProgram(programs.externalForces);
   const pxUniLoc = gl.getUniformLocation(programs.externalForces!, "px");
   gl.uniform2f(pxUniLoc, cellScale.x, cellScale.y);
@@ -491,9 +491,13 @@ const draw = () => {
   gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4);
 
   // Swap fbos for ping pong buffer
-  let temp = fbos.vel_0;
+  let tempVel = fbos.vel_0;
   fbos.vel_0 = fbos.vel_1;
-  fbos.vel_1 = temp;
+  fbos.vel_1 = tempVel;
+
+  let tempPressure = fbos.pressure_0;
+  fbos.pressure_0 = fbos.pressure_1;
+  fbos.pressure_1 = tempPressure;
 
   // Clean
   gl.bindVertexArray(null);
