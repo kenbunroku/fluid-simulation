@@ -15,7 +15,6 @@ export const mouseState = {
 };
 
 let previousMouseCoords = vec2(0, 0);
-let mouseMoved = false;
 
 export const initMouseEvents = (
   canvas: HTMLCanvasElement | null,
@@ -24,7 +23,6 @@ export const initMouseEvents = (
   if (!canvas) return;
 
   const resetMouseState = () => {
-    mouseMoved = false;
     mouseState.force = vec2(0, 0);
   };
 
@@ -34,7 +32,6 @@ export const initMouseEvents = (
     clearTimeout(timeoutId);
     const target = event.target as HTMLCanvasElement;
     if (!target) return;
-    mouseMoved = true;
 
     // Convert mouse position to normalized device coordinates
     const rect = target.getBoundingClientRect();
