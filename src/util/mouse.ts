@@ -26,21 +26,28 @@ export const initMouseEvents = (
   const onMouseMove = (event: MouseEvent) => {
     const target = event.target as HTMLCanvasElement;
     if (!target) return;
+    mouseMoved = true;
 
     // Convert mouse position to normalized device coordinates
     const rect = target.getBoundingClientRect();
     const mouseX = (event.clientX / rect.width) * 2 - 1;
     const mouseY = -(event.clientY / rect.height) * 2 + 1;
 
+    const cursorSizeX = props.cursor_size * props.cellScale.x;
+    const cursorSizeY = props.cursor_size * props.cellScale.y;
+
+    const centerX = Math.min(
+      Math.max(mouseX, -1 + cursorSizeX + props.cellScale.x * 2),
+      1 - cursorSizeX - props.cellScale.x * 2
+    );
+    const centerY = Math.min(
+      Math.max(mouseY, -1 + cursorSizeY + props.cellScale.y * 2),
+      1 - cursorSizeY - props.cellScale.y * 2
+    );
+
     // Update mouse state
-    mouseState.center = vec2(mouseX, mouseY);
-    mouseMoved = true;
-    updateMouseState();
-  };
+    mouseState.center = vec2(centerX, centerY);
 
-  canvas.addEventListener("mousemove", onMouseMove, false);
-
-  const updateMouseState = () => {
     if (!mouseMoved) {
       mouseState.force = vec2(0, 0);
       return;
@@ -59,5 +66,5 @@ export const initMouseEvents = (
     mouseMoved = false;
   };
 
-  return updateMouseState;
+  canvas.addEventListener("mousemove", onMouseMove, false);
 };
