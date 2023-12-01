@@ -23,7 +23,15 @@ export const initMouseEvents = (
 ) => {
   if (!canvas) return;
 
+  const resetMouseState = () => {
+    mouseMoved = false;
+    mouseState.force = vec2(0, 0);
+  };
+
+  let timeoutId = setTimeout(resetMouseState, 100);
+
   const onMouseMove = (event: MouseEvent) => {
+    clearTimeout(timeoutId);
     const target = event.target as HTMLCanvasElement;
     if (!target) return;
     mouseMoved = true;
@@ -48,14 +56,10 @@ export const initMouseEvents = (
     // Update mouse state
     mouseState.center = vec2(centerX, centerY);
 
-    if (!mouseMoved) {
-      mouseState.force = vec2(0, 0);
-      return;
-    }
-
     // Calculate force
     const forceX =
       ((mouseState.center.x - previousMouseCoords.x) / 2) * props.mouse_force;
+
     const forceY =
       ((mouseState.center.y - previousMouseCoords.y) / 2) * props.mouse_force;
     mouseState.force = vec2(forceX, forceY);
@@ -63,7 +67,7 @@ export const initMouseEvents = (
     // Update previous mouse position
     previousMouseCoords = mouseState.center;
 
-    mouseMoved = false;
+    timeoutId = setTimeout(resetMouseState, 100);
   };
 
   canvas.addEventListener("mousemove", onMouseMove, false);
