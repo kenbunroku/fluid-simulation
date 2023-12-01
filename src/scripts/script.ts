@@ -99,8 +99,11 @@ const init = () => {
   cellScale = vec2(1 / width, 1 / height);
   mouseProps.cellScale = cellScale;
 
-  ext = gl.getExtension("EXT_float_blend");
-  gl.getExtension("EXT_color_buffer_float");
+  ext = {
+    floatBlend: gl.getExtension("EXT_float_blend"),
+    colorBufferFloat: gl.getExtension("EXT_color_buffer_float"),
+  };
+
   if (!ext) {
     throw new Error("Unable to get the extension.");
   }
