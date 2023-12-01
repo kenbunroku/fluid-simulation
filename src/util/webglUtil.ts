@@ -115,3 +115,14 @@ export const createFramebuffer = (
 
   return { framebuffer: framebuffer, texture: texture };
 };
+
+export const deleteFramebuffer = (
+  gl: WebGL2RenderingContext,
+  framebuffer: WebGLFramebuffer | null,
+  texture: WebGLTexture | null
+) => {
+  gl.deleteFramebuffer(framebuffer);
+  gl.deleteTexture(texture);
+  framebuffer = null;
+  texture = null;
+};
