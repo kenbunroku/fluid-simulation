@@ -32,6 +32,7 @@ let height: number = 0;
 let gl: WebGL2RenderingContext | null = null;
 let cellScale = vec2(0, 0);
 let fboSize = vec2(0, 0);
+let boundarySpace = vec2(0, 0);
 
 const programs: { [key: string]: WebGLProgram | null } = {
   advection: null,
@@ -56,7 +57,7 @@ const options: Options = {
   iterations_poisson: 32,
   iterations_viscous: 32,
   mouse_force: 20,
-  resolution: 1.0,
+  resolution: 0.5,
   cursor_size: 100,
   viscous: 30,
   isBounce: false,
@@ -83,11 +84,11 @@ const init = () => {
     throw new Error("No html canvas element.");
   }
 
-  width = Math.floor(window.innerWidth * options.resolution);
-  height = Math.floor(window.innerHeight * options.resolution);
+  width = window.innerWidth;
+  height = window.innerHeight;
 
   // WebGL rendering context
-  gl = canvas.getContext("webgl2");
+  gl = canvas.getContext("webgl2", { antialias: true, alpha: true });
   canvas.width = width;
   canvas.height = height;
 
@@ -95,13 +96,15 @@ const init = () => {
     throw new Error("No WebGL2 context.");
   }
 
-  fboSize = vec2(width, height);
+  fboSize = vec2(
+    Math.floor(window.innerWidth * options.resolution),
+    Math.floor(window.innerHeight * options.resolution)
+  );
   cellScale = vec2(1 / width, 1 / height);
   mouseProps.cellScale = cellScale;
-
   ext = {
-    floatBlend: gl.getExtension("EXT_float_blend"),
     colorBufferFloat: gl.getExtension("EXT_color_buffer_float"),
+    supportLinearFiltering: gl.getExtension("OES_texture_float_linear"),
   };
 
   if (!ext) {
@@ -323,6 +326,11 @@ const draw = () => {
   ) {
     throw new Error("Framebuffer is null.");
   }
+  if (options.isBounce) {
+    boundarySpace = vec2(0, 0);
+  } else {
+    boundarySpace = vec2(cellScale.x, cellScale.y);
+  }
 
   requestAnimationFrame(draw);
 
@@ -341,11 +349,11 @@ const draw = () => {
   gl.bindTexture(gl.TEXTURE_2D, fbos.vel_0.texture);
   const velUniLoc = gl.getUniformLocation(programs.advection!, "velocity");
   gl.uniform1i(velUniLoc, 0);
-  const boundarySpace = gl.getUniformLocation(
+  const boundarySpaceUniLoc = gl.getUniformLocation(
     programs.advection!,
     "boundarySpace"
   );
-  gl.uniform2f(boundarySpace, cellScale.x, cellScale.y);
+  gl.uniform2f(boundarySpaceUniLoc, boundarySpace.x, boundarySpace.y);
   const fboSizeUniLoc = gl.getUniformLocation(programs.advection!, "fboSize");
   gl.uniform2f(fboSizeUniLoc, fboSize.x, fboSize.y);
   const dtUniLoc = gl.getUniformLocation(programs.advection!, "dt");
@@ -358,7 +366,7 @@ const draw = () => {
   // Add external forces from mouse movement
   // Write to vel_1 for the first iteration
   gl.enable(gl.BLEND);
-  gl.blendFunc(gl.ONE, gl.ONE_MINUS_CONSTANT_ALPHA);
+  gl.blendFunc(gl.ONE, gl.ONE);
   gl.useProgram(programs.externalForces);
   const pxUniLoc = gl.getUniformLocation(programs.externalForces!, "px");
   gl.uniform2f(pxUniLoc, cellScale.x, cellScale.y);
@@ -405,7 +413,7 @@ const draw = () => {
         programs.viscosity!,
         "boundarySpace"
       );
-      gl.uniform2f(boundarySpace2, cellScale.x, cellScale.y);
+      gl.uniform2f(boundarySpace2, boundarySpace.x, boundarySpace.y);
       gl.bindFramebuffer(gl.FRAMEBUFFER, viscousDst.framebuffer);
       gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4);
     }
@@ -433,7 +441,7 @@ const draw = () => {
     programs.divergence!,
     "boundarySpace"
   );
-  gl.uniform2f(boundarySpace3, cellScale.x, cellScale.y);
+  gl.uniform2f(boundarySpace3, boundarySpace.x, boundarySpace.y);
   gl.bindFramebuffer(gl.FRAMEBUFFER, fbos.div.framebuffer);
   gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4);
 
@@ -463,7 +471,7 @@ const draw = () => {
       programs.poisson!,
       "boundarySpace"
     );
-    gl.uniform2f(boundarySpace4, cellScale.x, cellScale.y);
+    gl.uniform2f(boundarySpace4, boundarySpace.x, boundarySpace.y);
     gl.bindFramebuffer(gl.FRAMEBUFFER, pressureDst.framebuffer);
     gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4);
   }
