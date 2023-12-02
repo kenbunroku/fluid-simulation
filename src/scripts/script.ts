@@ -104,7 +104,7 @@ const init = () => {
   mouseProps.cellScale = cellScale;
   ext = {
     colorBufferFloat: gl.getExtension("EXT_color_buffer_float"),
-    supportLinearFiltering: gl.getExtension("OES_texture_float_linear"),
+    floatTexture: gl.getExtension("OES_texture_float_linear"),
   };
 
   if (!ext) {
@@ -512,15 +512,6 @@ const draw = () => {
   const velocityUniLoc3 = gl.getUniformLocation(programs.draw!, "velocity");
   gl.uniform1i(velocityUniLoc3, 0);
   gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4);
-
-  // Swap fbos for ping pong buffer
-  let tempVel = fbos.vel_0;
-  fbos.vel_0 = fbos.vel_1;
-  fbos.vel_1 = tempVel;
-
-  let tempPressure = fbos.pressure_0;
-  fbos.pressure_0 = fbos.pressure_1;
-  fbos.pressure_1 = tempPressure;
 
   // Clean
   gl.bindVertexArray(null);
