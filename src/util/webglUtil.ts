@@ -17,7 +17,7 @@ export const loadFile = async (path: string): Promise<string> => {
 };
 
 const createShader = (
-  gl: WebGL2RenderingContext,
+  gl: WebGL2RenderingContext | WebGLRenderingContext,
   type: "VERTEX_SHADER" | "FRAGMENT_SHADER",
   source: string
 ) => {
@@ -44,7 +44,7 @@ const createShader = (
 };
 
 export const createProgram = async (
-  gl: WebGL2RenderingContext,
+  gl: WebGL2RenderingContext | WebGLRenderingContext,
   vs: string,
   fs: string
 ) => {
@@ -76,23 +76,28 @@ export const createProgram = async (
 };
 
 export const createFramebuffer = (
-  gl: WebGL2RenderingContext,
+  gl: WebGL2RenderingContext | WebGLRenderingContext,
   width: number,
-  height: number
+  height: number,
+  ext?: any
 ): { framebuffer: WebGLFramebuffer; texture: WebGLTexture } => {
   const framebuffer = gl.createFramebuffer();
   gl.bindFramebuffer(gl.FRAMEBUFFER, framebuffer);
   const texture = gl.createTexture();
   gl.bindTexture(gl.TEXTURE_2D, texture);
+
+  const format = gl instanceof WebGL2RenderingContext ? gl.RGBA32F : gl.RGBA;
+  const type =
+    gl instanceof WebGL2RenderingContext ? gl.FLOAT : ext.HALF_FLOAT_OES;
   gl.texImage2D(
     gl.TEXTURE_2D,
     0,
-    gl.RGBA32F,
+    format,
     width,
     height,
     0,
     gl.RGBA,
-    gl.FLOAT,
+    type,
     null
   );
   gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
@@ -117,7 +122,7 @@ export const createFramebuffer = (
 };
 
 export const deleteFramebuffer = (
-  gl: WebGL2RenderingContext,
+  gl: WebGL2RenderingContext | WebGLRenderingContext,
   framebuffer: WebGLFramebuffer | null,
   texture: WebGLTexture | null
 ) => {

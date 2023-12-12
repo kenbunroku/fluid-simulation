@@ -29,7 +29,7 @@ interface Options {
 let canvas: HTMLCanvasElement | null = null;
 let width: number = 0;
 let height: number = 0;
-let gl: WebGL2RenderingContext | null = null;
+let gl: WebGL2RenderingContext | WebGLRenderingContext | null = null;
 let cellScale = vec2(0, 0);
 let fboSize = vec2(0, 0);
 let boundarySpace = vec2(0, 0);
@@ -42,6 +42,9 @@ const programs: { [key: string]: WebGLProgram | null } = {
   pressure: null,
   draw: null,
 };
+let quadVao: WebGLVertexArrayObject | null = null;
+let vertexBuffer: WebGLBuffer | null = null;
+let uvBuffer: WebGLBuffer | null = null;
 
 const fbos: { [key: string]: FramebufferObject | null } = {
   vel_0: null,
@@ -72,8 +75,6 @@ const mouseProps = {
   cellScale,
 };
 
-let quadVao: WebGLVertexArrayObject | null = null;
-
 let ext: any = null;
 
 const init = () => {
@@ -88,13 +89,33 @@ const init = () => {
   height = window.innerHeight;
 
   // WebGL rendering context
-  gl = canvas.getContext("webgl2", { antialias: true, alpha: true });
+  const param = {
+    alpha: false,
+    antialias: false,
+    depth: false,
+    stencil: false,
+    preserveDrawingBuffer: false,
+  };
+  gl = canvas.getContext("webgl2", param) as WebGL2RenderingContext | null;
   canvas.width = width;
   canvas.height = height;
+  const isWebGL2 = !!gl;
 
+  if (!isWebGL2) {
+    gl = (canvas.getContext("webgl", param) ||
+      canvas.getContext(
+        "experimental-webgl",
+        param
+      )) as WebGLRenderingContext | null;
+  }
   if (!gl) {
     throw new Error("No WebGL2 context.");
   }
+
+  ext = {
+    colorBufferFloat: gl.getExtension("EXT_color_buffer_float"),
+    floatTexture: gl.getExtension("OES_texture_float_linear"),
+  };
 
   fboSize = vec2(
     Math.floor(window.innerWidth * options.resolution),
@@ -102,10 +123,6 @@ const init = () => {
   );
   cellScale = vec2(1 / width, 1 / height);
   mouseProps.cellScale = cellScale;
-  ext = {
-    colorBufferFloat: gl.getExtension("EXT_color_buffer_float"),
-    floatTexture: gl.getExtension("OES_texture_float_linear"),
-  };
 
   if (!ext) {
     throw new Error("Unable to get the extension.");
@@ -202,7 +219,7 @@ const resize = () => {
   cellScale = vec2(1 / width, 1 / height);
   mouseProps.cellScale = cellScale;
 
-  // recreate the framebuffers
+  // recreate the frame buffers
   Object.keys(fbos).forEach((key) => {
     const fbo = fbos[key];
     if (fbo !== null && gl !== null) {
@@ -220,7 +237,6 @@ const load = async () => {
   // Load shaders
   const vs = await loadFile("/fluid-simulation/shaders/face.vert");
   const fs = await loadFile("/fluid-simulation/shaders/color.frag");
-  // const lineVs = await loadFile("/fluid-simulation/shaders/line.vert");
   const advectionFs = await loadFile(
     "/fluid-simulation/shaders/advection.frag"
   );
@@ -264,11 +280,7 @@ const load = async () => {
   programs.draw = await createProgram(gl, vs, fs);
 };
 
-const setupVAO = () => {
-  if (!gl) {
-    throw new Error("No WebGL2 context.");
-  }
-
+const setupVAO = (gl: WebGL2RenderingContext) => {
   const vertices = new Float32Array([
     -1.0, -1.0, 0.0, 1.0, -1.0, 0.0, -1.0, 1.0, 0.0, 1.0, 1.0, 0.0,
   ]);
@@ -299,13 +311,35 @@ const setupVAO = () => {
   gl.bindBuffer(gl.ARRAY_BUFFER, null);
 };
 
-const setup = () => {
-  if (!gl) {
-    throw new Error("No WebGL2 context.");
-  }
+const setupVBO = (gl: WebGLRenderingContext) => {
+  const vertices = new Float32Array([
+    -1.0, -1.0, 0.0, 1.0, -1.0, 0.0, -1.0, 1.0, 0.0, 1.0, 1.0, 0.0,
+  ]);
+  const uvs = new Float32Array([0.0, 0.0, 1.0, 0.0, 0.0, 1.0]);
+
+  // Create and bind a buffer for vertices
+  vertexBuffer = gl.createBuffer();
+  gl.bindBuffer(gl.ARRAY_BUFFER, vertexBuffer);
+  gl.bufferData(gl.ARRAY_BUFFER, vertices, gl.STATIC_DRAW);
+  gl.enableVertexAttribArray(0);
+  gl.vertexAttribPointer(0, 3, gl.FLOAT, false, 0, 0);
+
+  // Create and bind a buffer for UVs
+  uvBuffer = gl.createBuffer();
+  gl.bindBuffer(gl.ARRAY_BUFFER, uvBuffer);
+  gl.bufferData(gl.ARRAY_BUFFER, uvs, gl.STATIC_DRAW);
+  gl.enableVertexAttribArray(1);
+  gl.vertexAttribPointer(1, 2, gl.FLOAT, false, 0, 0);
+};
+
+const setup = (gl: WebGL2RenderingContext | WebGLRenderingContext) => {
   gl.clearColor(1.0, 1.0, 1.0, 1.0);
 
-  setupVAO();
+  if (gl instanceof WebGL2RenderingContext) {
+    setupVAO(gl);
+  } else {
+    setupVBO(gl);
+  }
 };
 
 const draw = () => {
@@ -339,11 +373,19 @@ const draw = () => {
   gl.clear(gl.COLOR_BUFFER_BIT);
 
   // Bind VAO
-  gl.bindVertexArray(quadVao);
+  if (gl instanceof WebGL2RenderingContext) {
+    gl.bindVertexArray(quadVao);
+  } else {
+    gl.bindBuffer(gl.ARRAY_BUFFER, vertexBuffer);
+    gl.enableVertexAttribArray(0);
+    gl.vertexAttribPointer(0, 3, gl.FLOAT, false, 0, 0);
+    gl.bindBuffer(gl.ARRAY_BUFFER, uvBuffer);
+    gl.enableVertexAttribArray(1);
+    gl.vertexAttribPointer(1, 2, gl.FLOAT, false, 0, 0);
+  }
 
   // Advection
-  // Read from vel_0 and Write to vel_1 for the first iteration
-  // Keep swapping vel_0 and vel_1 from the second iteration
+  // Read from vel_0 and Write to vel_1
   gl.useProgram(programs.advection);
   gl.activeTexture(gl.TEXTURE0);
   gl.bindTexture(gl.TEXTURE_2D, fbos.vel_0.texture);
@@ -364,7 +406,7 @@ const draw = () => {
   gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4);
 
   // Add external forces from mouse movement
-  // Write to vel_1 for the first iteration
+  // Write to vel_1
   gl.enable(gl.BLEND);
   gl.blendFunc(gl.ONE, gl.ONE);
   gl.useProgram(programs.externalForces);
@@ -383,15 +425,15 @@ const draw = () => {
   gl.disable(gl.BLEND);
 
   // Viscous
-  // Read from vel_1 and vel_viscous0 and Write to vel_viscous1 for the first iteration
-  // Keep swapping vel_viscous0 and vel_viscous1 from the second iteration
+  // Read from vel_1 and vel_viscous0 and Write to vel_viscous1
   if (options.isViscous) {
+    gl.useProgram(programs.viscosity);
+
     for (let i = 0; i < options.iterations_viscous; i++) {
       // Swap the viscous buffers
       let viscousSrc = i % 2 === 0 ? fbos.vel_viscous0 : fbos.vel_viscous1;
       let viscousDst = i % 2 === 0 ? fbos.vel_viscous1 : fbos.vel_viscous0;
 
-      gl.useProgram(programs.viscosity);
       gl.activeTexture(gl.TEXTURE0);
       gl.bindTexture(gl.TEXTURE_2D, fbos.vel_1.texture);
       const velUniLoc = gl.getUniformLocation(programs.viscosity!, "velocity");
@@ -420,8 +462,7 @@ const draw = () => {
   }
 
   // Divergence
-  // Read from vel_viscous0 or vel_1 and Write to div for the first iteration
-  // Keep swapping vel_1 and vel_0 from the second iteration
+  // Read from vel_viscous0 or vel_1 and Write to div
   gl.useProgram(programs.divergence);
   gl.activeTexture(gl.TEXTURE0);
   gl.bindTexture(
@@ -446,14 +487,13 @@ const draw = () => {
   gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4);
 
   // Poisson
-  // Read from div and Write to pressure_1 for the first iteration
-  // Keep swapping pressure_1 and pressure_0 in the loop
+  // Read from div and Write to pressure_1
+  gl.useProgram(programs.poisson);
   for (let i = 0; i < options.iterations_poisson; i++) {
     // Swap the pressure buffers
     let pressureSrc = i % 2 === 0 ? fbos.pressure_0 : fbos.pressure_1;
     let pressureDst = i % 2 === 0 ? fbos.pressure_1 : fbos.pressure_0;
 
-    gl.useProgram(programs.poisson);
     gl.activeTexture(gl.TEXTURE0);
     gl.bindTexture(gl.TEXTURE_2D, fbos.div.texture);
     const divergenceUniLoc = gl.getUniformLocation(
@@ -477,8 +517,7 @@ const draw = () => {
   }
 
   // Pressure
-  // Read from vel_1 and pressure_1 and Write to pressure_0 for the first iteration
-  // Keep swapping pressure_1 and pressure_0 from the second iteration
+  // Read from vel_1 and pressure_1 and Write to pressure_0
   gl.useProgram(programs.pressure);
   const pxUniLoc4 = gl.getUniformLocation(programs.pressure!, "px");
   gl.uniform2f(pxUniLoc4, cellScale.x, cellScale.y);
@@ -505,7 +544,6 @@ const draw = () => {
 
   // Draw the final result
   // Read from vel_0 for the first iteration
-  // Keep swapping vel_0 and vel_1 from the second iteration
   gl.useProgram(programs.draw);
   gl.activeTexture(gl.TEXTURE0);
   gl.bindTexture(gl.TEXTURE_2D, fbos.vel_0.texture);
@@ -514,13 +552,20 @@ const draw = () => {
   gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4);
 
   // Clean
-  gl.bindVertexArray(null);
+  if (gl instanceof WebGL2RenderingContext) {
+    gl.bindVertexArray(null);
+  } else {
+    gl.bindBuffer(gl.ARRAY_BUFFER, null);
+  }
 };
 
 const run = async () => {
   init();
   await load();
-  setup();
+  if (!gl) {
+    throw new Error("No WebGL2 context.");
+  }
+  setup(gl);
   initMouseEvents(canvas, mouseProps);
   draw();
 };
