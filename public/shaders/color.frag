@@ -14,7 +14,7 @@ void main() {
 
     vec3 color = vec3(vel.x, vel.y, 1.0f);
 
-    color = mix(vec3(1.0f), color, len);
+    color = mix(vec3(0.0f), color, len);
 
     fragColor = vec4(color, 1.0f);
 }
