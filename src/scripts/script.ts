@@ -7,24 +7,7 @@ import {
   deleteFramebuffer,
 } from "../util/webglUtil";
 import { Pane } from "tweakpane";
-
-interface FramebufferObject {
-  framebuffer: WebGLFramebuffer;
-  texture: WebGLTexture;
-}
-
-interface Options {
-  iterations_poisson: number;
-  iterations_viscous: number;
-  mouse_force: number;
-  resolution: number;
-  cursor_size: number;
-  viscous: number;
-  isBounce: boolean;
-  dt: number;
-  isViscous: boolean;
-  BFECC: boolean;
-}
+import { FramebufferObject, Options } from "./types";
 
 let canvas: HTMLCanvasElement | null = null;
 let width: number = 0;
@@ -209,13 +192,15 @@ const resize = () => {
     throw new Error("No canvas element.");
   }
 
-  width = Math.floor(window.innerWidth * options.resolution);
-  height = Math.floor(window.innerHeight * options.resolution);
-
+  width = window.innerWidth;
+  height = window.innerHeight;
   canvas.width = width;
   canvas.height = height;
 
-  fboSize = vec2(width, height);
+  fboSize = vec2(
+    Math.floor(window.innerWidth * options.resolution),
+    Math.floor(window.innerHeight * options.resolution)
+  );
   cellScale = vec2(1 / width, 1 / height);
   mouseProps.cellScale = cellScale;
 
@@ -333,7 +318,7 @@ const setupVBO = (gl: WebGLRenderingContext) => {
 };
 
 const setup = (gl: WebGL2RenderingContext | WebGLRenderingContext) => {
-  gl.clearColor(1.0, 1.0, 1.0, 1.0);
+  gl.clearColor(0.0, 0.0, 0.0, 1.0);
 
   if (gl instanceof WebGL2RenderingContext) {
     setupVAO(gl);
