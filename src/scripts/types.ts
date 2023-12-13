@@ -16,3 +16,4 @@ export interface Options {
   BFECC: boolean;
 }
 
+export type Position = number[];
