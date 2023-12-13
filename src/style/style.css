@@ -9,8 +9,6 @@ body {
 }
 
 .video-container {
-  width: 600px;
-  height: 400px;
   position: absolute;
   bottom: 0;
   right: 0;
