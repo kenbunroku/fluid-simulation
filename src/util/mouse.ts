@@ -28,15 +28,27 @@ export const initMouseEvents = (
 
   let timeoutId = setTimeout(resetMouseState, 100);
 
-  const onMouseMove = (event: MouseEvent) => {
+  const onMouseMove = (event: MouseEvent | TouchEvent) => {
     clearTimeout(timeoutId);
     const target = event.target as HTMLCanvasElement;
     if (!target) return;
 
+    let mouseX, mouseY;
+    // Check if event is a touch event
+    if (event instanceof TouchEvent) {
+      const touch = event.touches[0] || event.changedTouches[0];
+      if (!touch) return;
+      mouseX = touch.clientX;
+      mouseY = touch.clientY;
+    } else {
+      mouseX = event.clientX;
+      mouseY = event.clientY;
+    }
+
     // Convert mouse position to normalized device coordinates
     const rect = target.getBoundingClientRect();
-    const mouseX = (event.clientX / rect.width) * 2 - 1;
-    const mouseY = -(event.clientY / rect.height) * 2 + 1;
+    mouseX = (mouseX / rect.width) * 2 - 1;
+    mouseY = -(mouseY / rect.height) * 2 + 1;
 
     const cursorSizeX = props.cursor_size * props.cellScale.x;
     const cursorSizeY = props.cursor_size * props.cellScale.y;
@@ -68,4 +80,13 @@ export const initMouseEvents = (
   };
 
   canvas.addEventListener("mousemove", onMouseMove, false);
+  // create touch events
+  canvas.addEventListener(
+    "touchmove",
+    (event) => {
+      event.preventDefault();
+      onMouseMove(event);
+    },
+    false
+  );
 };
