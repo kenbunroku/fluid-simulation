@@ -8,6 +8,7 @@ import {
 } from "../util/webglUtil";
 import { Pane } from "tweakpane";
 import { FramebufferObject, Options } from "./types";
+declare const ml5: any;
 
 let canvas: HTMLCanvasElement | null = null;
 let width: number = 0;
@@ -16,6 +17,12 @@ let gl: WebGL2RenderingContext | WebGLRenderingContext | null = null;
 let cellScale = vec2(0, 0);
 let fboSize = vec2(0, 0);
 let boundarySpace = vec2(0, 0);
+let video: HTMLVideoElement;
+let poseNet: any;
+
+let previousPoint = vec2(0, 0);
+let currentPoint = vec2(0, 0);
+let force = vec2(0, 0);
 
 const programs: { [key: string]: WebGLProgram | null } = {
   advection: null,
@@ -214,10 +221,82 @@ const resize = () => {
   });
 };
 
+const calculateForce = (point: number[], canvas: HTMLCanvasElement | null) => {
+  if (!canvas) return;
+
+  // Convert PoseNet point to canvas coordinates
+  const pointX = (point[0] / canvas.width) * 2 - 1;
+  const pointY = -(point[1] / canvas.height) * 2 + 1;
+
+  const cursorSizeX = options.cursor_size * cellScale.x;
+  const cursorSizeY = options.cursor_size * cellScale.y;
+
+  const centerX = Math.min(
+    Math.max(pointX, -1 + cursorSizeX + cellScale.x * 2),
+    1 - cursorSizeX - cellScale.x * 2
+  );
+  const centerY = Math.min(
+    Math.max(pointY, -1 + cursorSizeY + cellScale.y * 2),
+    1 - cursorSizeY - cellScale.y * 2
+  );
+
+  // Update mouse state
+  currentPoint = vec2(centerX, centerY);
+  console.log("current point", point[0], point[1]);
+
+  // Calculate force
+  const forceX = ((currentPoint.x - previousPoint.x) / 2) * options.mouse_force;
+
+  const forceY = ((currentPoint.y - previousPoint.y) / 2) * options.mouse_force;
+  force = vec2(forceX, forceY);
+
+  // Update previous mouse position
+  previousPoint = currentPoint;
+};
+
 const load = async () => {
   if (!gl) {
     throw new Error("No WebGL2 context.");
   }
+
+  // Load video
+  video = document.getElementById("video") as HTMLVideoElement;
+  if (!(video instanceof HTMLVideoElement) || !video) {
+    throw new Error("No video element.");
+  }
+  video.width = 600;
+  video.height = 400;
+
+  await navigator.mediaDevices
+    .getUserMedia({
+      video: true,
+      audio: false,
+    })
+    .then((stream) => {
+      video.srcObject = stream;
+      video.play();
+    })
+    .catch((err) => {
+      console.log(err);
+    });
+
+  // Load handpose
+  const handpose = ml5.handpose(video, () => {
+    console.log("handpose Model Loaded!");
+  });
+  let timeoutId = setTimeout(() => {
+    force = vec2(0.0, 0.0);
+  }, 100);
+  handpose.on("hand", (results: any) => {
+    const poses = results;
+    if (poses[0]?.annotations.indexFinger[3]) {
+      clearTimeout(timeoutId);
+      calculateForce(poses[0].annotations.indexFinger[3], canvas);
+      timeoutId = setTimeout(() => {
+        force = vec2(0.0, 0.0);
+      }, 100);
+    }
+  });
 
   // Load shaders
   const vs = await loadFile("/fluid-simulation/shaders/face.vert");
@@ -398,12 +477,12 @@ const draw = () => {
   const pxUniLoc = gl.getUniformLocation(programs.externalForces!, "px");
   gl.uniform2f(pxUniLoc, cellScale.x, cellScale.y);
   const forceUniLoc = gl.getUniformLocation(programs.externalForces!, "force");
-  gl.uniform2f(forceUniLoc, mouseState.force.x, mouseState.force.y);
+  gl.uniform2f(forceUniLoc, force.x, force.y);
   const centerUniLoc = gl.getUniformLocation(
     programs.externalForces!,
     "center"
   );
-  gl.uniform2f(centerUniLoc, mouseState.center.x, mouseState.center.y);
+  gl.uniform2f(centerUniLoc, currentPoint.x, currentPoint.y);
   const scaleUniLoc = gl.getUniformLocation(programs.externalForces!, "scale");
   gl.uniform2f(scaleUniLoc, options.cursor_size, options.cursor_size);
   gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4);
@@ -551,7 +630,11 @@ const run = async () => {
     throw new Error("No WebGL2 context.");
   }
   setup(gl);
-  initMouseEvents(canvas, mouseProps);
+  // initMouseEvents(canvas, mouseProps);
+
+  // setInterval(() => {
+  //   force = vec2(0, 0);
+  // }, 500);
   draw();
 };
 

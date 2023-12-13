@@ -15,3 +15,4 @@ export interface Options {
   isViscous: boolean;
   BFECC: boolean;
 }
+
