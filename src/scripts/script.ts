@@ -1,5 +1,4 @@
 import { vec2 } from "../util/math";
-import { initMouseEvents, mouseState } from "../util/mouse";
 import {
   loadFile,
   createProgram,
@@ -7,7 +6,7 @@ import {
   deleteFramebuffer,
 } from "../util/webglUtil";
 import { Pane } from "tweakpane";
-import { FramebufferObject, Options } from "./types";
+import { FramebufferObject, Options, Position } from "./types";
 declare const ml5: any;
 
 let canvas: HTMLCanvasElement | null = null;
@@ -18,7 +17,7 @@ let cellScale = vec2(0, 0);
 let fboSize = vec2(0, 0);
 let boundarySpace = vec2(0, 0);
 let video: HTMLVideoElement;
-let poseNet: any;
+let handpose: any;
 
 let previousPoint = vec2(0, 0);
 let currentPoint = vec2(0, 0);
@@ -224,9 +223,11 @@ const resize = () => {
 const calculateForce = (point: number[], canvas: HTMLCanvasElement | null) => {
   if (!canvas) return;
 
+  const widthRatio = width / video.width;
+  const heightRatio = height / video.height;
   // Convert PoseNet point to canvas coordinates
-  const pointX = (point[0] / canvas.width) * 2 - 1;
-  const pointY = -(point[1] / canvas.height) * 2 + 1;
+  const pointX = ((point[0] * widthRatio) / canvas.width) * 2 - 1;
+  const pointY = -((point[1] * heightRatio) / canvas.height) * 2 + 1;
 
   const cursorSizeX = options.cursor_size * cellScale.x;
   const cursorSizeY = options.cursor_size * cellScale.y;
@@ -242,11 +243,9 @@ const calculateForce = (point: number[], canvas: HTMLCanvasElement | null) => {
 
   // Update mouse state
   currentPoint = vec2(centerX, centerY);
-  console.log("current point", point[0], point[1]);
 
   // Calculate force
   const forceX = ((currentPoint.x - previousPoint.x) / 2) * options.mouse_force;
-
   const forceY = ((currentPoint.y - previousPoint.y) / 2) * options.mouse_force;
   force = vec2(forceX, forceY);
 
@@ -264,8 +263,8 @@ const load = async () => {
   if (!(video instanceof HTMLVideoElement) || !video) {
     throw new Error("No video element.");
   }
-  video.width = 600;
-  video.height = 400;
+  video.width = 640;
+  video.height = 480;
 
   await navigator.mediaDevices
     .getUserMedia({
@@ -281,21 +280,13 @@ const load = async () => {
     });
 
   // Load handpose
-  const handpose = ml5.handpose(video, () => {
+  const handposeOptions = {
+    flipHorizontal: true,
+    maxContinuousChecks: 60,
+  };
+
+  handpose = ml5.handpose(video, handposeOptions, () => {
     console.log("handpose Model Loaded!");
-  });
-  let timeoutId = setTimeout(() => {
-    force = vec2(0.0, 0.0);
-  }, 100);
-  handpose.on("hand", (results: any) => {
-    const poses = results;
-    if (poses[0]?.annotations.indexFinger[3]) {
-      clearTimeout(timeoutId);
-      calculateForce(poses[0].annotations.indexFinger[3], canvas);
-      timeoutId = setTimeout(() => {
-        force = vec2(0.0, 0.0);
-      }, 100);
-    }
   });
 
   // Load shaders
@@ -429,6 +420,8 @@ const draw = () => {
   } else {
     boundarySpace = vec2(cellScale.x, cellScale.y);
   }
+
+  console.log(force);
 
   requestAnimationFrame(draw);
 
@@ -623,6 +616,26 @@ const draw = () => {
   }
 };
 
+const createMovingAverageFilter = (size: number) => {
+  let buffer: Position[] = [];
+
+  return {
+    update(value: Position): Position {
+      if (buffer.length >= size) {
+        buffer.shift(); // Remove the oldest entry
+      }
+      buffer.push(value); // Add the new value
+
+      // Calculate the average
+      let sum = buffer.reduce((acc, v) => {
+        return acc.map((num, idx) => num + v[idx]);
+      }, Array(value.length).fill(0));
+
+      return sum.map((num) => num / buffer.length);
+    },
+  };
+};
+
 const run = async () => {
   init();
   await load();
@@ -631,10 +644,24 @@ const run = async () => {
   }
   setup(gl);
   // initMouseEvents(canvas, mouseProps);
+  const filter = createMovingAverageFilter(5);
+  let timeoutId = setTimeout(() => {
+    force = vec2(0.0, 0.0);
+  }, 100);
+  handpose.on("hand", (results: any) => {
+    const poses = results;
+    if (poses[0]?.annotations.indexFinger[2]) {
+      clearTimeout(timeoutId);
+      const smoothedPosition: Position = filter.update(
+        poses[0].annotations.indexFinger[2]
+      );
+      calculateForce(smoothedPosition, canvas);
+    }
+    timeoutId = setTimeout(() => {
+      force = vec2(0.0, 0.0);
+    }, 150);
+  });
 
-  // setInterval(() => {
-  //   force = vec2(0, 0);
-  // }, 500);
   draw();
 };
 
