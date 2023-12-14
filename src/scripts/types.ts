@@ -17,3 +17,15 @@ export interface Options {
 }
 
 export type Position = number[];
+
+export interface Vec2 {
+  x: number;
+  y: number;
+}
+
+export interface HandPointData {
+  annotation: string;
+  currentPosition: Position;
+  previousPosition: Position;
+  force: Position;
+}
