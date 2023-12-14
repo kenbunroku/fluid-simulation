@@ -6,7 +6,7 @@ import {
   deleteFramebuffer,
 } from "../util/webglUtil";
 import { Pane } from "tweakpane";
-import { FramebufferObject, Options, Position } from "./types";
+import { FramebufferObject, Options, Position, HandPointData } from "./types";
 declare const ml5: any;
 
 let canvas: HTMLCanvasElement | null = null;
@@ -22,6 +22,44 @@ let handpose: any;
 let previousPoint = vec2(0, 0);
 let currentPoint = vec2(0, 0);
 let force = vec2(0, 0);
+let handPointsData: HandPointData[] = [
+  {
+    annotation: "indexFinger",
+    currentPosition: [0, 0],
+    previousPosition: [0, 0],
+    force: [0, 0],
+  },
+  {
+    annotation: "middleFinger",
+    currentPosition: [0, 0],
+    previousPosition: [0, 0],
+    force: [0, 0],
+  },
+  {
+    annotation: "pinky",
+    currentPosition: [0, 0],
+    previousPosition: [0, 0],
+    force: [0, 0],
+  },
+  {
+    annotation: "ringFinger",
+    currentPosition: [0, 0],
+    previousPosition: [0, 0],
+    force: [0, 0],
+  },
+  {
+    annotation: "thumb",
+    currentPosition: [0, 0],
+    previousPosition: [0, 0],
+    force: [0, 0],
+  },
+  {
+    annotation: "palmBase",
+    currentPosition: [0, 0],
+    previousPosition: [0, 0],
+    force: [0, 0],
+  },
+];
 
 const programs: { [key: string]: WebGLProgram | null } = {
   advection: null,
@@ -81,9 +119,6 @@ const init = () => {
   const param = {
     alpha: false,
     antialias: false,
-    depth: false,
-    stencil: false,
-    preserveDrawingBuffer: false,
   };
   gl = canvas.getContext("webgl2", param) as WebGL2RenderingContext | null;
   canvas.width = width;
@@ -220,14 +255,18 @@ const resize = () => {
   });
 };
 
-const calculateForce = (point: number[], canvas: HTMLCanvasElement | null) => {
-  if (!canvas) return;
+const calculateForce = (
+  curPoint: number[],
+  prePoint: number[] | undefined,
+  canvas: HTMLCanvasElement | null
+) => {
+  if (!canvas || prePoint === undefined) return;
 
   const widthRatio = width / video.width;
   const heightRatio = height / video.height;
   // Convert PoseNet point to canvas coordinates
-  const pointX = ((point[0] * widthRatio) / canvas.width) * 2 - 1;
-  const pointY = -((point[1] * heightRatio) / canvas.height) * 2 + 1;
+  const pointX = ((curPoint[0] * widthRatio) / canvas.width) * 2 - 1;
+  const pointY = -((curPoint[1] * heightRatio) / canvas.height) * 2 + 1;
 
   const cursorSizeX = options.cursor_size * cellScale.x;
   const cursorSizeY = options.cursor_size * cellScale.y;
@@ -242,15 +281,16 @@ const calculateForce = (point: number[], canvas: HTMLCanvasElement | null) => {
   );
 
   // Update mouse state
-  currentPoint = vec2(centerX, centerY);
-
+  const currentPoint = [centerX, centerY];
   // Calculate force
-  const forceX = ((currentPoint.x - previousPoint.x) / 2) * options.mouse_force;
-  const forceY = ((currentPoint.y - previousPoint.y) / 2) * options.mouse_force;
-  force = vec2(forceX, forceY);
+  const forceX = ((currentPoint[0] - prePoint[0]) / 2) * options.mouse_force;
+  const forceY = ((currentPoint[1] - prePoint[1]) / 2) * options.mouse_force;
+  const force = [forceX, forceY];
 
   // Update previous mouse position
-  previousPoint = currentPoint;
+  prePoint = currentPoint;
+
+  return { currentPoint, prePoint, force };
 };
 
 const load = async () => {
@@ -282,7 +322,7 @@ const load = async () => {
   // Load handpose
   const handposeOptions = {
     flipHorizontal: true,
-    maxContinuousChecks: 60,
+    // maxContinuousChecks: 60,
   };
 
   handpose = ml5.handpose(video, handposeOptions, () => {
@@ -421,8 +461,6 @@ const draw = () => {
     boundarySpace = vec2(cellScale.x, cellScale.y);
   }
 
-  console.log(force);
-
   requestAnimationFrame(draw);
 
   // clear color and viewport
@@ -467,17 +505,26 @@ const draw = () => {
   gl.enable(gl.BLEND);
   gl.blendFunc(gl.ONE, gl.ONE);
   gl.useProgram(programs.externalForces);
+
   const pxUniLoc = gl.getUniformLocation(programs.externalForces!, "px");
   gl.uniform2f(pxUniLoc, cellScale.x, cellScale.y);
+  const scaleUniLoc = gl.getUniformLocation(programs.externalForces!, "scale");
+  gl.uniform2f(scaleUniLoc, options.cursor_size, options.cursor_size);
+
+  const palmPoint = handPointsData.find((d) => d.annotation === "palmBase");
+
+  if (!palmPoint) return;
   const forceUniLoc = gl.getUniformLocation(programs.externalForces!, "force");
-  gl.uniform2f(forceUniLoc, force.x, force.y);
+  gl.uniform2f(forceUniLoc, palmPoint.force[0], palmPoint.force[1]);
   const centerUniLoc = gl.getUniformLocation(
     programs.externalForces!,
     "center"
   );
-  gl.uniform2f(centerUniLoc, currentPoint.x, currentPoint.y);
-  const scaleUniLoc = gl.getUniformLocation(programs.externalForces!, "scale");
-  gl.uniform2f(scaleUniLoc, options.cursor_size, options.cursor_size);
+  gl.uniform2f(
+    centerUniLoc,
+    palmPoint.currentPosition[0],
+    palmPoint.currentPosition[1]
+  );
   gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4);
   gl.disable(gl.BLEND);
 
@@ -616,15 +663,16 @@ const draw = () => {
   }
 };
 
+// Smooth the hand movement by calculating the moving average
 const createMovingAverageFilter = (size: number) => {
   let buffer: Position[] = [];
 
   return {
     update(value: Position): Position {
       if (buffer.length >= size) {
-        buffer.shift(); // Remove the oldest entry
+        buffer.shift();
       }
-      buffer.push(value); // Add the new value
+      buffer.push(value);
 
       // Calculate the average
       let sum = buffer.reduce((acc, v) => {
@@ -635,6 +683,8 @@ const createMovingAverageFilter = (size: number) => {
     },
   };
 };
+type AnnotationPoint = [number, number, number];
+type PoseAnnotations = { [key: string]: AnnotationPoint[] };
 
 const run = async () => {
   init();
@@ -646,19 +696,40 @@ const run = async () => {
   // initMouseEvents(canvas, mouseProps);
   const filter = createMovingAverageFilter(5);
   let timeoutId = setTimeout(() => {
-    force = vec2(0.0, 0.0);
+    handPointsData.forEach((handPoint) => {
+      handPoint.force = [0, 0];
+    });
   }, 100);
   handpose.on("hand", (results: any) => {
     const poses = results;
-    if (poses[0]?.annotations.indexFinger[2]) {
+    if (poses[0]?.annotations) {
       clearTimeout(timeoutId);
-      const smoothedPosition: Position = filter.update(
-        poses[0].annotations.indexFinger[2]
-      );
-      calculateForce(smoothedPosition, canvas);
+      // loop through all the poses detected
+      const annotations: PoseAnnotations = poses[0].annotations;
+      Object.entries(annotations).forEach(([key, value]) => {
+        if (value) {
+          const handPoint = handPointsData.find((d) => d.annotation === key);
+          // Check if the value has at least 3 points
+          const smoothedPosition: Position = filter.update(
+            key === "palmBase" ? value[0] : value[2]
+          );
+          const updatedValues = calculateForce(
+            smoothedPosition,
+            handPoint?.previousPosition,
+            canvas
+          );
+          if (updatedValues) {
+            handPoint!.currentPosition = updatedValues.currentPoint;
+            handPoint!.previousPosition = updatedValues.prePoint;
+            handPoint!.force = updatedValues.force;
+          }
+        }
+      });
     }
     timeoutId = setTimeout(() => {
-      force = vec2(0.0, 0.0);
+      handPointsData.forEach((handPoint) => {
+        handPoint.force = [0, 0];
+      });
     }, 150);
   });
 
