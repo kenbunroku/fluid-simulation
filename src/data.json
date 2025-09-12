@@ -2,7 +2,7 @@
   "type": "trajectory_collection",
   "place": 0,
   "real_time": { "t0": "2021-02-13T15:00:00", "dt": 1, "duration": 3600 },
-  "anim_time": { "t0": 0, "dt": 0.0833, "duration": 300 },
+  "anim_time": { "t0": 0, "dt": 0.2499, "duration": 900 },
   "trajectories": [
     {
       "person_id": "2021021300000058021",
