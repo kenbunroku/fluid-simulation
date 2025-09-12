@@ -137,7 +137,7 @@ vec3 getPaletteColor(float t, float time) {
     // 各パレットの表示時間: 10秒
     // トランジション時間: 5秒
     // 合計サイクル時間: 15秒
-    const float DISPLAY_TIME = 5.0f;
+    const float DISPLAY_TIME = 25.0f;
     const float TRANSITION_TIME = 5.0f;
     const float CYCLE_TIME = DISPLAY_TIME + TRANSITION_TIME;
 
