@@ -1,5 +1,4 @@
-import { vec2 } from "../util/math";
-import { initMouseEvents, mouseState } from "../util/mouse";
+import { vec2, lerp } from "../util/math";
 import {
   loadFile,
   createProgram,
@@ -7,7 +6,13 @@ import {
   deleteFramebuffer,
 } from "../util/webglUtil";
 import { Pane } from "tweakpane";
-import { FramebufferObject, Options } from "./types";
+import {
+  FramebufferObject,
+  Options,
+  Agent,
+  TrajectoryCollection,
+} from "./types";
+import testJson from "../data.json";
 
 let canvas: HTMLCanvasElement | null = null;
 let width: number = 0;
@@ -16,6 +21,12 @@ let gl: WebGL2RenderingContext | WebGLRenderingContext | null = null;
 let cellScale = vec2(0, 0);
 let fboSize = vec2(0, 0);
 let boundarySpace = vec2(0, 0);
+
+let trajCollection: TrajectoryCollection | null = null;
+const TRAJ_SOURCE: string | TrajectoryCollection =
+  testJson as TrajectoryCollection;
+
+const agents: Agent[] = [];
 
 const programs: { [key: string]: WebGLProgram | null } = {
   advection: null,
@@ -42,13 +53,13 @@ const fbos: { [key: string]: FramebufferObject | null } = {
 const options: Options = {
   iterations_poisson: 32,
   iterations_viscous: 32,
-  mouse_force: 20,
+  mouse_force: 80,
   resolution: 0.5,
-  cursor_size: 100,
-  viscous: 30,
+  cursor_size: 25,
+  viscous: 60,
   isBounce: false,
-  dt: 0.014,
-  isViscous: false,
+  dt: 0.003,
+  isViscous: true,
   BFECC: true,
 };
 
@@ -212,6 +223,14 @@ const resize = () => {
       fbos[key] = createFramebuffer(gl, width, height);
     }
   });
+
+  // エージェントが画面外に出ないよう軽く補正（任意）
+  for (const a of agents) {
+    a.pos.x = Math.max(-1, Math.min(1, a.pos.x));
+    a.pos.y = Math.max(-1, Math.min(1, a.pos.y));
+    a.prev.x = Math.max(-1, Math.min(1, a.prev.x));
+    a.prev.y = Math.max(-1, Math.min(1, a.prev.y));
+  }
 };
 
 const load = async () => {
@@ -327,6 +346,7 @@ const setup = (gl: WebGL2RenderingContext | WebGLRenderingContext) => {
   }
 };
 
+let _lastNow = 0;
 const draw = () => {
   if (!gl) {
     throw new Error("No WebGL2 context.");
@@ -334,6 +354,16 @@ const draw = () => {
   if (!canvas) {
     throw new Error("No canvas element.");
   }
+
+  // ---- 時間計測 & エージェント更新 ----
+  const now = performance.now() * 0.001;
+  const deltaTime = _lastNow === 0 ? 0 : now - _lastNow;
+  _lastNow = now;
+  // updateAgents(dtSec);
+  if (trajCollection) {
+    updateAgentsFromTimeline(trajCollection);
+  }
+
   if (
     !fbos.vel_0 ||
     !fbos.vel_1 ||
@@ -395,18 +425,45 @@ const draw = () => {
   gl.enable(gl.BLEND);
   gl.blendFunc(gl.ONE, gl.ONE);
   gl.useProgram(programs.externalForces);
+
+  // px は既存どおり（シェーダ側でピクセル→UV変換などに使う想定）
   const pxUniLoc = gl.getUniformLocation(programs.externalForces!, "px");
   gl.uniform2f(pxUniLoc, cellScale.x, cellScale.y);
+
   const forceUniLoc = gl.getUniformLocation(programs.externalForces!, "force");
-  gl.uniform2f(forceUniLoc, mouseState.force.x, mouseState.force.y);
   const centerUniLoc = gl.getUniformLocation(
     programs.externalForces!,
     "center"
   );
-  gl.uniform2f(centerUniLoc, mouseState.center.x, mouseState.center.y);
   const scaleUniLoc = gl.getUniformLocation(programs.externalForces!, "scale");
-  gl.uniform2f(scaleUniLoc, options.cursor_size, options.cursor_size);
-  gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4);
+
+  const radiusNDCx = (options.cursor_size / width) * 2;
+  const radiusNDCy = (options.cursor_size / height) * 2;
+  const marginX = radiusNDCx,
+    marginY = radiusNDCy;
+  // 複数エージェント分ループして加算描画
+  for (const a of agents) {
+    if (!a.active) continue;
+
+    // 壁内側の安全域チェック（NDC）
+    const nearWall =
+      Math.abs(a.pos.x) > 1 - marginX || Math.abs(a.pos.y) > 1 - marginY;
+
+    let fx = (a.pos.x - a.prev.x) * options.mouse_force;
+    let fy = (a.pos.y - a.prev.y) * options.mouse_force;
+
+    // 壁際なら力を弱める or 無効化
+    if (nearWall) {
+      fx *= 0.0; // or 0.2 など緩和係数
+      fy *= 0.0;
+    }
+
+    gl.uniform2f(forceUniLoc, fx, fy);
+    gl.uniform2f(centerUniLoc, a.pos.x, a.pos.y);
+    gl.uniform2f(scaleUniLoc, options.cursor_size, options.cursor_size);
+
+    gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4);
+  }
   gl.disable(gl.BLEND);
 
   // Viscous
@@ -534,6 +591,12 @@ const draw = () => {
   gl.bindTexture(gl.TEXTURE_2D, fbos.vel_0.texture);
   const velocityUniLoc3 = gl.getUniformLocation(programs.draw!, "velocity");
   gl.uniform1i(velocityUniLoc3, 0);
+  const timeUniLoc = gl.getUniformLocation(programs.draw!, "time");
+  gl.uniform1f(timeUniLoc, now);
+  const texelSizeUniLoc = gl.getUniformLocation(programs.draw!, "resolution");
+  gl.uniform2f(texelSizeUniLoc, width, height);
+  const deltaTimeUniLoc = gl.getUniformLocation(programs.draw!, "dt");
+  gl.uniform1f(deltaTimeUniLoc, deltaTime);
   gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4);
 
   // Clean
@@ -551,9 +614,152 @@ const run = async () => {
     throw new Error("No WebGL2 context.");
   }
   setup(gl);
-  initMouseEvents(canvas, mouseProps);
+
+  // 1️⃣ 文字列 or オブジェクト両対応で読み込み
+  const trajObj: TrajectoryCollection = await loadTrajectories(TRAJ_SOURCE);
+  // 2️⃣ そのまま buildAgentsFromCollection に渡す
+  trajCollection = trajObj;
+  buildAgentsFromCollection(trajCollection);
+  resetAnimationClock();
+
   draw();
 };
+
+// ----- エージェント関連 -----
+const buildAgentsFromCollection = (col: TrajectoryCollection) => {
+  agents.length = 0;
+  const animDt = col.anim_time.dt; // 0.0833 sec (= 1 real sec)
+  // real_time.dt と anim_time.dt は1:1対応の前提（例：1秒→0.0833秒）
+
+  for (const traj of col.trajectories) {
+    const keys: { t: number; x: number; y: number }[] = [];
+
+    for (const itv of traj.intervals) {
+      // start/end はサンプルの時間（秒）と仮定。サンプル列も start..end に対応
+      // i番目サンプルのアニメ時間 = (start + i) * animDt
+      for (let i = 0; i < itv.samples.length; i++) {
+        const t = (itv.start + i) * animDt; // アニメ時間[sec]
+        const { x, y } = itv.samples[i];
+        keys.push({ t, x, y });
+      }
+    }
+    // 時間順にソート & 重複時刻を排除
+    keys.sort((a, b) => a.t - b.t);
+    const dedup: typeof keys = [];
+    for (const k of keys) {
+      if (!dedup.length || Math.abs(dedup[dedup.length - 1].t - k.t) > 1e-6)
+        dedup.push(k);
+    }
+
+    // 初期位置（キーがなければスキップ）
+    if (!dedup.length) continue;
+    const p0 = worldToNDC(dedup[0].x, dedup[0].y);
+    agents.push({
+      id: traj.person_id,
+      active: false,
+      pos: { ...p0 },
+      prev: { ...p0 },
+      keys: dedup,
+    });
+  }
+};
+
+const sampleAgentPosAt = (
+  agent: Agent,
+  tSec: number
+): { ok: boolean; x: number; y: number } => {
+  const ks = agent.keys;
+  if (!ks.length) return { ok: false, x: 0, y: 0 };
+  if (tSec <= ks[0].t) return { ok: true, x: ks[0].x, y: ks[0].y };
+  if (tSec >= ks[ks.length - 1].t)
+    return { ok: true, x: ks[ks.length - 1].x, y: ks[ks.length - 1].y };
+
+  // 区間探索（線形でOK。数が多いなら二分探索に置換）
+  for (let i = 0; i < ks.length - 1; i++) {
+    const a = ks[i],
+      b = ks[i + 1];
+    if (tSec >= a.t && tSec <= b.t) {
+      const r = (tSec - a.t) / Math.max(1e-6, b.t - a.t);
+      return { ok: true, x: lerp(a.x, b.x, r), y: lerp(a.y, b.y, r) };
+    }
+  }
+  return { ok: false, x: 0, y: 0 };
+};
+
+const isInsideWorldRect = (x: number, y: number) => {
+  return (
+    x >= worldBounds.minX &&
+    x <= worldBounds.maxX &&
+    y >= worldBounds.minY &&
+    y <= worldBounds.maxY
+  );
+};
+
+let animStart = 0;
+
+function resetAnimationClock() {
+  animStart = performance.now() * 0.001;
+}
+
+function currentAnimTimeSec(col: TrajectoryCollection) {
+  const now = performance.now() * 0.001;
+  const t = now - animStart;
+  // 0..duration のループ
+  const dur = col.anim_time.duration; // 300 sec
+  return ((t % dur) + dur) % dur;
+}
+
+function updateAgentsFromTimeline(col: TrajectoryCollection) {
+  for (const a of agents) {
+    const t = currentAnimTimeSec(col);
+    // 現在時刻にキーがあれば補間位置を得る
+    const s = sampleAgentPosAt(a, t);
+    if (s.ok && isInsideWorldRect(s.x, s.y)) {
+      a.active = true;
+      a.prev = a.pos;
+      a.pos = worldToNDC(s.x, s.y);
+    } else {
+      // エリア外 or サンプルなし → 非アクティブ（外力ゼロ）
+      a.active = false;
+      a.prev = a.pos; // 直前との差分0に
+    }
+  }
+}
+
+// ====== World bounds（データ座標の矩形範囲）======
+// 例：添付サンプルに合わせて適当に置いています。
+// ※ここはあなたのデータ範囲に合わせて最適化してください。
+const worldBounds = {
+  minX: -12000,
+  maxX: 0,
+  minY: 0,
+  maxY: 10000,
+  flipY: false, // データyが上向き=増加で上に行くなら false。画像系の下向きなら true。
+};
+
+const loadTrajectories = async (
+  urlOrObject: string | TrajectoryCollection
+): Promise<TrajectoryCollection> => {
+  if (typeof urlOrObject === "string") {
+    const res = await fetch(urlOrObject);
+    return await res.json();
+  }
+  return urlOrObject;
+};
+
+function worldToUV(x: number, y: number) {
+  const u = (x - worldBounds.minX) / (worldBounds.maxX - worldBounds.minX);
+  let v = (y - worldBounds.minY) / (worldBounds.maxY - worldBounds.minY);
+  if (worldBounds.flipY) v = 1.0 - v;
+  return { u, v };
+}
+function uvToNDC(u: number, v: number) {
+  return { x: u * 2 - 1, y: v * 2 - 1 };
+}
+function worldToNDC(x: number, y: number) {
+  const { u, v } = worldToUV(x, y);
+  return uvToNDC(u, v);
+}
 
 window.onload = run;
 window.onresize = resize;
